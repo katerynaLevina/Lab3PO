@@ -239,7 +239,24 @@ void task_generator(ThreadPool& pool, int start_id, int count) {
 }
 
     int main() {
+        srand(static_cast<unsigned int>(time(nullptr)));
+        print_log("Starting program...");
 
+        ThreadPool pool;
 
+        //  додаткові потоки, що паралельно додають задачі в пул
+        thread gen1(task_generator, ref(pool), 1, 10);
+        thread gen2(task_generator, ref(pool), 100, 10);
+
+        gen1.join();
+        gen2.join();
+
+        //  два інтервали по 40 секунд
+        this_thread::sleep_for(chrono::seconds(90));
+
+        pool.printStats();
+        pool.shutdown(false);
+
+        print_log("Program finished successfully.");
         return 0;
     }
