@@ -139,6 +139,107 @@ public:
         shutdown(false);
     }
 
+    // додавання завдання
+    void addTask(int id) {
+        int duration = 6 + rand() % 9; // випадковий час від 6 до 14 секунд
+
+        lock_guard<mutex> lock(mtx);
+
+        // відкидаємо задачу якщо її час + час в буфері > 60 секунд
+        if (accumulate_time_sec + duration > 60) {
+            if (!is_full) {
+                is_full = true;
+                full_start_time = chrono::steady_clock::now();
+            }
+            tasks_rejected++;
+            print_log("[Main] Task " + to_string(id) + " rejected. 60 seconds limit exceeded.");
+            return;
+        }
+
+        accumulate_time_sec += duration;
+
+        Task t;
+        t.id = id;
+        t.duration_sec = duration;
+        t.enqueue_time = chrono::steady_clock::now();
+        t.func = [duration]() {
+            this_thread::sleep_for(chrono::seconds(duration));
+        };
+
+        accumulate_queue.push(move(t));
+        print_log("[Main] Task " + to_string(id) + " added to buffer. Buffer time: " + to_string(accumulate_time_sec) + "/60 s.");
+    }
+
+    // пауза
+    void pause() {
+        lock_guard<mutex> lock(mtx);
+        paused = true;
+        print_log("[Pool] Operation temporarily paused.");
+    }
+
+    // відновлення
+    void resume() {
+        lock_guard<mutex> lock(mtx);
+        paused = false;
+        print_log("[Pool] Operation resumed.");
+        cv_worker.notify_all();
+    }
+
+    // завершення
+    void shutdown(bool immediate) {
+        {
+            lock_guard<mutex> lock(mtx);
+            if (stop_flag || immediate_stop) return;
+
+            if (immediate) {
+                immediate_stop = true;
+                print_log("[Pool] Immediate shutdown initiated (abandoning tasks)...");
+            } else {
+                stop_flag = true;
+                print_log("[Pool] Graceful shutdown initiated...");
+            }
+        }
+        cv_manager.notify_all();
+        cv_worker.notify_all();
+
+        if (manager.joinable()) manager.join();
+        for (auto& w : workers) {
+            if (w.joinable()) w.join();
+        }
+    }
+
+    // статистика
+    void printStats() {
+        lock_guard<mutex> lock(mtx);
+        cout << "\n--- THREAD POOL STATISTICS ---\n";
+        cout << "Threads created: 5 (4 workers + 1 manager)\n";
+        cout << "Tasks completed: " << tasks_completed << "\n";
+        cout << "Tasks rejected: " << tasks_rejected << "\n";
+
+        if (tracked_wait_tasks > 0) {
+            cout << "Average task waiting time: " << (total_wait_time / tracked_wait_tasks) << " sec\n";
+        }
+        if (full_periods_count > 0) {
+            cout << "Queue was full (time limit) " << full_periods_count << " times.\n";
+            cout << "Min full time: " << min_full_time << " sec\n";
+            cout << "Max full time: " << max_full_time << " sec\n";
+        } else {
+            cout << "Queue was never full.\n";
+        }
+        cout << "------------------------------\n\n";
+    }
+};
+
+//  генерація задач із різних потоків
+void task_generator(ThreadPool& pool, int start_id, int count) {
+    for (int i = 0; i < count; ++i) {
+        pool.addTask(start_id + i);
+        this_thread::sleep_for(chrono::seconds(rand() % 4 + 1));
+    }
+}
+
     int main() {
 
+
+        return 0;
     }
